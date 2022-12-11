@@ -1,11 +1,5 @@
-import type { Request } from './AbstractMessage.js';
-import { BareError } from './BareServer.js';
-import type { Options } from './BareServer.js';
-import { getRandomValues } from 'node:crypto';
-import type { ClientRequest, IncomingMessage } from 'node:http';
-import { request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
-import type { Duplex } from 'node:stream';
+import type { Options } from './BareServer';
+import type CommonMeta from './Meta';
 
 export interface BareRemote {
 	host: string;
@@ -18,135 +12,53 @@ export type BareHeaders = Record<string, string | string[]>;
 
 export function randomHex(byteLength: number) {
 	const bytes = new Uint8Array(byteLength);
-	getRandomValues(bytes);
+	crypto.getRandomValues(bytes);
 	let hex = '';
 	for (const byte of bytes) hex += byte.toString(16).padStart(2, '0');
 	return hex;
 }
 
-function outgoingError<T>(error: T): T | BareError {
-	if (error instanceof Error) {
-		switch ((<Error & { code?: string }>error).code) {
-			case 'ENOTFOUND':
-				return new BareError(500, {
-					code: 'HOST_NOT_FOUND',
-					id: 'request',
-					message: 'The specified host could not be resolved.',
-				});
-			case 'ECONNREFUSED':
-				return new BareError(500, {
-					code: 'CONNECTION_REFUSED',
-					id: 'response',
-					message: 'The remote rejected the request.',
-				});
-			case 'ECONNRESET':
-				return new BareError(500, {
-					code: 'CONNECTION_RESET',
-					id: 'response',
-					message: 'The request was forcibly closed.',
-				});
-			case 'ETIMEOUT':
-				return new BareError(500, {
-					code: 'CONNECTION_TIMEOUT',
-					id: 'response',
-					message: 'The response timed out.',
-				});
+const noBody = ['GET', 'HEAD'];
+
+export async function bareFetch(
+	request: Request,
+	signal: AbortSignal,
+	requestHeaders: BareHeaders,
+	remote: BareRemote
+) {
+	return await globalThis.fetch(
+		`${remote.protocol}//${remote.host}:${remote.port}${remote.path}`,
+		{
+			headers: requestHeaders as HeadersInit,
+			body: noBody.includes(request.method) ? undefined : await request.blob(),
+			signal,
+			redirect: 'manual',
 		}
-	}
-
-	return error;
+	);
 }
 
-export async function fetch(
-	request: Request,
-	signal: AbortSignal,
-	requestHeaders: BareHeaders,
-	url: BareRemote,
-	options: Options
-): Promise<IncomingMessage> {
-	const req = {
-		host: url.host,
-		port: url.port,
-		path: url.path,
-		method: request.method,
-		headers: requestHeaders,
-		setHost: false,
-		localAddress: options.localAddress,
-		signal,
-	};
+export function upgradeBareFetch(remote: BareRemote) {
+	return new Promise<WebSocket>((resolve, reject) => {
+		const cleanup = () => {
+			ws.removeEventListener('error', onError);
+			ws.removeEventListener('open', onOpen);
+		};
 
-	let outgoing: ClientRequest;
+		const onError = () => {
+			cleanup();
+			reject();
+		};
 
-	if (url.protocol === 'https:')
-		outgoing = httpsRequest({
-			...req,
-			agent: options.httpsAgent,
-		});
-	else if (url.protocol === 'http:')
-		outgoing = httpRequest({
-			...req,
-			agent: options.httpAgent,
-		});
-	else throw new RangeError(`Unsupported protocol: '${url.protocol}'`);
+		const onOpen = () => {
+			cleanup();
+			resolve(ws);
+		};
 
-	request.body.pipe(outgoing);
+		const ws = new WebSocket(
+			`${remote.protocol}//${remote.host}:${remote.port}${remote.path}`
+		);
 
-	return await new Promise((resolve, reject) => {
-		outgoing.on('response', (response: IncomingMessage) => {
-			resolve(response);
-		});
-
-		outgoing.on('upgrade', (req, socket) => {
-			reject('Remote did not send a response');
-			socket.destroy();
-		});
-
-		outgoing.on('error', (error: Error) => {
-			reject(outgoingError(error));
-		});
-	});
-}
-
-export async function upgradeFetch(
-	request: Request,
-	signal: AbortSignal,
-	requestHeaders: BareHeaders,
-	remote: BareRemote,
-	options: Options
-): Promise<[res: IncomingMessage, socket: Duplex, head: Buffer]> {
-	const req = {
-		host: remote.host,
-		port: remote.port,
-		path: remote.path,
-		headers: requestHeaders,
-		method: request.method,
-		setHost: false,
-		localAddress: options.localAddress,
-		signal,
-	};
-
-	let outgoing: ClientRequest;
-
-	if (remote.protocol === 'wss:')
-		outgoing = httpsRequest({ ...req, agent: options.httpsAgent });
-	else if (remote.protocol === 'ws:')
-		outgoing = httpRequest({ ...req, agent: options.httpAgent });
-	else throw new RangeError(`Unsupported protocol: '${remote.protocol}'`);
-
-	outgoing.end();
-
-	return await new Promise((resolve, reject) => {
-		outgoing.on('response', (res) => {
-			reject('Remote did not upgrade the WebSocket');
-			res.destroy();
-		});
-
-		outgoing.on('upgrade', (res, socket, head) => {
-			resolve([res, socket, head]);
-		});
-
-		outgoing.on('error', (error) => {
-			reject(outgoingError(error));
-		});
+		ws.addEventListener('error', onError);
+		ws.addEventListener('open', onOpen);
 	});
 }

@@ -1,17 +1,9 @@
-import type { Request } from './AbstractMessage.js';
-import { Response } from './AbstractMessage.js';
-import type { RouteCallback, SocketRouteCallback } from './BareServer.js';
+import type { RouteCallback } from './BareServer.js';
 import type Server from './BareServer.js';
 import { BareError, json } from './BareServer.js';
 import { decodeProtocol } from './encodeProtocol.js';
-import {
-	flattenHeader,
-	mapHeadersFromArray,
-	rawHeaderNames,
-} from './headerUtil.js';
-import type { BareHeaders, BareRemote } from './requestUtil.js';
-import { fetch, upgradeFetch, randomHex } from './requestUtil.js';
-import { Headers } from 'headers-polyfill';
+import { BareHeaders, BareRemote, upgradeBareFetch } from './requestUtil.js';
+import { bareFetch, randomHex } from './requestUtil.js';
 
 const validProtocols: string[] = ['http:', 'https:', 'ws:', 'wss:'];
 
@@ -135,54 +127,34 @@ function readHeaders(request: Request): BareHeaderData {
 	return { remote: <BareRemote>remote, headers };
 }
 
-const tunnelRequest: RouteCallback = async (request, res, options) => {
-	const abort = new AbortController();
-
-	request.body.on('close', () => {
-		if (!request.body.complete) abort.abort();
-	});
-
-	res.on('close', () => {
-		abort.abort();
-	});
-
+const tunnelRequest: RouteCallback = async (request) => {
 	const { remote, headers } = readHeaders(request);
 
-	const response = await fetch(request, abort.signal, headers, remote, options);
+	const response = await bareFetch(request, request.signal, headers, remote);
 
 	const responseHeaders = new Headers();
 
-	for (const header in response.headers) {
+	for (const [header, value] of response.headers) {
 		if (header === 'content-encoding' || header === 'x-content-encoding')
-			responseHeaders.set(
-				'content-encoding',
-				flattenHeader(response.headers[header]!)
-			);
+			responseHeaders.set('content-encoding', value);
 		else if (header === 'content-length')
-			responseHeaders.set(
-				'content-length',
-				flattenHeader(response.headers[header]!)
-			);
+			responseHeaders.set('content-length', value);
 	}
 
 	responseHeaders.set(
 		'x-bare-headers',
-		JSON.stringify(
-			mapHeadersFromArray(rawHeaderNames(response.rawHeaders), {
-				...(<BareHeaders>response.headers),
-			})
-		)
+		JSON.stringify(response.headers.entries())
 	);
 
-	responseHeaders.set('x-bare-status', response.statusCode!.toString());
-	responseHeaders.set('x-bare-status-text', response.statusMessage!);
+	responseHeaders.set('x-bare-status', response.status.toString());
+	responseHeaders.set('x-bare-status-text', response.statusText);
 
-	return new Response(response, { status: 200, headers: responseHeaders });
+	return new Response(response.body, { status: 200, headers: responseHeaders });
 };
 
 const metaExpiration = 30e3;
 
-const wsMeta: RouteCallback = async (request, res, options) => {
+const wsMeta: RouteCallback = async (request, options) => {
 	if (request.method === 'OPTIONS') {
 		return new Response(undefined, { status: 200 });
 	}
@@ -213,7 +185,7 @@ const wsMeta: RouteCallback = async (request, res, options) => {
 	});
 };
 
-const wsNewMeta: RouteCallback = async (request, res, options) => {
+const wsNewMeta: RouteCallback = async (request, options) => {
 	const id = randomHex(16);
 
 	await options.database.set(id, {
@@ -221,38 +193,28 @@ const wsNewMeta: RouteCallback = async (request, res, options) => {
 		expires: Date.now() + metaExpiration,
 	});
 
-	return new Response(Buffer.from(id));
+	return new Response(id);
 };
 
-const tunnelSocket: SocketRouteCallback = async (
-	request,
-	socket,
-	head,
-	options
-) => {
-	const abort = new AbortController();
+const tunnelSocket: RouteCallback = async (request, options) => {
+	const upgradeHeader = request.headers.get('upgrade');
 
-	request.body.on('close', () => {
-		if (!request.body.complete) abort.abort();
-	});
+	if (upgradeHeader !== 'websocket')
+		throw new BareError(400, {
+			code: 'INVALID_BARE_HEADER',
+			id: `request.headers.upgrade`,
+			message: `Expected websocket.`,
+		});
 
-	socket.on('close', () => {
-		abort.abort();
-	});
+	const [firstProtocol, data] =
+		request.headers.get('sec-websocket-protocol')?.split(/,\s*/g) || [];
 
-	if (!request.headers.has('sec-websocket-protocol')) {
-		socket.end();
-		return;
-	}
-
-	const [firstProtocol, data] = request.headers
-		.get('sec-websocket-protocol')!
-		.split(/,\s*/g);
-
-	if (firstProtocol !== 'bare') {
-		socket.end();
-		return;
-	}
+	if (firstProtocol !== 'bare')
+		throw new BareError(400, {
+			code: 'INVALID_BARE_HEADER',
+			id: `request.headers.sec-websocket-protocol`,
+			message: `Meta was not specified.`,
+		});
 
 	const {
 		remote,
@@ -263,72 +225,71 @@ const tunnelSocket: SocketRouteCallback = async (
 
 	loadForwardedHeaders(forwardHeaders, headers, request);
 
-	const [remoteResponse, remoteSocket] = await upgradeFetch(
-		request,
-		abort.signal,
-		headers,
-		remote,
-		options
-	);
+	const [client, server] = Object.values(new WebSocketPair());
 
-	remoteSocket.on('close', () => {
-		// console.log('Remote closed');
-		socket.end();
+	if (!id)
+		throw new BareError(400, {
+			code: 'INVALID_BARE_HEADER',
+			id: `request.headers.sec-websocket-protocol`,
+			message: `Expected ID.`,
+		});
+
+	const remoteSocket = await upgradeBareFetch(remote);
+
+	server.accept();
+
+	remoteSocket.addEventListener('close', () => {
+		server.close();
 	});
 
-	socket.on('close', () => {
-		// console.log('Serving closed');
-		remoteSocket.end();
+	server.addEventListener('close', () => {
+		remoteSocket.close();
 	});
 
-	remoteSocket.on('error', (error) => {
+	remoteSocket.addEventListener('error', (error) => {
 		if (options.logErrors) {
 			console.error('Remote socket error:', error);
 		}
-		socket.end();
+
+		server.close();
 	});
 
-	socket.on('error', (error) => {
+	remoteSocket.addEventListener('error', (error) => {
 		if (options.logErrors) {
 			console.error('Serving socket error:', error);
 		}
-		remoteSocket.end();
+
+		remoteSocket.close();
 	});
 
 	const meta = await options.database.get(id);
 
 	if (meta?.value.v === 1) {
 		meta.value.response = {
-			headers: mapHeadersFromArray(rawHeaderNames(remoteResponse.rawHeaders), {
-				...(<BareHeaders>remoteResponse.headers),
-			}),
+			headers: {},
 		};
 		await options.database.set(id, meta);
 	}
 
-	const responseHeaders = [
-		`HTTP/1.1 101 Switching Protocols`,
-		`Upgrade: websocket`,
-		`Connection: Upgrade`,
-		`Sec-WebSocket-Protocol: bare`,
-		`Sec-WebSocket-Accept: ${remoteResponse.headers['sec-websocket-accept']}`,
-	];
+	// pipe
 
-	if ('sec-websocket-extensions' in remoteResponse.headers) {
-		responseHeaders.push(
-			`Sec-WebSocket-Extensions: ${remoteResponse.headers['sec-websocket-extensions']}`
-		);
-	}
+	remoteSocket.addEventListener('message', (message) => {
+		server.send(message.data);
+	});
 
-	socket.write(responseHeaders.concat('', '').join('\r\n'));
+	server.addEventListener('message', (message) => {
+		remoteSocket.send(message.data);
+	});
 
-	remoteSocket.pipe(socket);
-	socket.pipe(remoteSocket);
+	return new Response(undefined, {
+		status: 101,
+		webSocket: client,
+	});
 };
 
 export default function registerV1(server: Server) {
 	server.routes.set('/v1/', tunnelRequest);
 	server.routes.set('/v1/ws-new-meta', wsNewMeta);
 	server.routes.set('/v1/ws-meta', wsMeta);
-	server.socketRoutes.set('/v1/', tunnelSocket);
+	server.routes.set('/v1/', tunnelSocket);
 }

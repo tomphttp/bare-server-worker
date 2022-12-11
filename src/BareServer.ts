@@ -1,17 +1,5 @@
-import { Request, Response, writeResponse } from './AbstractMessage.js';
 import type { JSONDatabaseAdapter } from './Meta.js';
-import type { BareHeaders } from './requestUtil.js';
 import createHttpError from 'http-errors';
-import EventEmitter from 'node:events';
-import { readFileSync } from 'node:fs';
-import type {
-	Agent as HttpAgent,
-	IncomingMessage,
-	ServerResponse,
-} from 'node:http';
-import type { Agent as HttpsAgent } from 'node:https';
-import { join } from 'node:path';
-import type { Duplex } from 'node:stream';
 
 export interface BareErrorBody {
 	code: string;
@@ -30,25 +18,18 @@ export class BareError extends Error {
 	}
 }
 
-export const pkg = JSON.parse(
-	readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')
-) as { version: string };
-
 const project: BareProject = {
-	name: 'bare-server-node',
-	description: 'TOMPHTTP NodeJS Bare Server',
-	repository: 'https://github.com/tomphttp/bare-server-node',
-	version: pkg.version,
+	name: 'bare-server-worker',
+	description: 'TOMPHTTP Cloudflare Bare Server',
+	repository: 'https://github.com/tomphttp/bare-server-worker',
+	version: '1.2.2',
 };
 
 export function json<T>(status: number, json: T) {
-	const send = Buffer.from(JSON.stringify(json, null, '\t'));
-
-	return new Response(send, {
+	return new Response(JSON.stringify(json, null, '\t'), {
 		status,
 		headers: {
 			'content-type': 'application/json',
-			'content-length': send.byteLength.toString(),
 		},
 	});
 }
@@ -95,27 +76,16 @@ export interface Options {
 	logErrors: boolean;
 	localAddress?: string;
 	maintainer?: BareMaintainer;
-	httpAgent: HttpAgent;
-	httpsAgent: HttpsAgent;
 	database: JSONDatabaseAdapter;
 }
 
 export type RouteCallback = (
 	request: Request,
-	response: ServerResponse<IncomingMessage>,
 	options: Options
 ) => Promise<Response> | Response;
 
-export type SocketRouteCallback = (
-	request: Request,
-	socket: Duplex,
-	head: Buffer,
-	options: Options
-) => Promise<void> | void;
-
-export default class Server extends EventEmitter {
+export default class Server extends EventTarget {
 	routes = new Map<string, RouteCallback>();
-	socketRoutes = new Map<string, SocketRouteCallback>();
 	private closed = false;
 	private directory: string;
 	private options: Options;
@@ -132,58 +102,25 @@ export default class Server extends EventEmitter {
 	 */
 	close() {
 		this.closed = true;
-		this.emit('close');
+		this.dispatchEvent(new Event('close'));
 	}
-	shouldRoute(request: IncomingMessage): boolean {
+	shouldRoute(request: Request): boolean {
 		return (
-			!this.closed &&
-			request.url !== undefined &&
-			request.url.startsWith(this.directory)
+			!this.closed && new URL(request.url).pathname.startsWith(this.directory)
 		);
 	}
 	get instanceInfo(): BareManifest {
 		return {
 			versions: ['v1', 'v2'],
-			language: 'NodeJS',
-			memoryUsage:
-				Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 100) / 100,
+			language: 'Cloudflare',
 			maintainer: this.options.maintainer,
 			project,
 		};
 	}
-	async routeUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
-		const request = new Request(req, {
-			method: req.method!,
-			path: req.url!,
-			headers: <BareHeaders>req.headers,
-		});
-
-		const service = request.url.pathname.slice(this.directory.length - 1);
-
-		if (this.socketRoutes.has(service)) {
-			const call = this.socketRoutes.get(service)!;
-
-			try {
-				await call(request, socket, head, this.options);
-			} catch (error) {
-				if (this.options.logErrors) {
-					console.error(error);
-				}
-
-				socket.end();
-			}
-		} else {
-			socket.end();
-		}
-	}
-	async routeRequest(req: IncomingMessage, res: ServerResponse) {
-		const request = new Request(req, {
-			method: req.method!,
-			path: req.url!,
-			headers: <BareHeaders>req.headers,
-		});
-
-		const service = request.url.pathname.slice(this.directory.length - 1);
+	async routeRequest(request: Request) {
+		const service = new URL(request.url).pathname.slice(
+			this.directory.length - 1
+		);
 		let response: Response;
 
 		try {
@@ -193,7 +130,7 @@ export default class Server extends EventEmitter {
 				response = json(200, this.instanceInfo);
 			} else if (this.routes.has(service)) {
 				const call = this.routes.get(service)!;
-				response = await call(request, res, this.options);
+				response = await call(request, this.options);
 			} else {
 				throw new createHttpError.NotFound();
 			}
@@ -223,7 +160,7 @@ export default class Server extends EventEmitter {
 					console.error(
 						'Cannot',
 						request.method,
-						request.url.pathname,
+						new URL(request.url).pathname,
 						': Route did not return a response.'
 					);
 				}
@@ -241,6 +178,6 @@ export default class Server extends EventEmitter {
 		// instead, fetch preflight every 10 minutes
 		response.headers.set('access-control-max-age', '7200');
 
-		writeResponse(response, res);
+		return response;
 	}
 }

@@ -1,6 +1,6 @@
 {
-	"name": "@tomphttp/bare-server-node",
-	"description": "The Bare Server implementation in NodeJS.",
+	"name": "@tomphttp/bare-server-worker",
+	"description": "The Bare Server implementation in Cloudflare Workers.",
 	"version": "1.2.2",
 	"homepage": "https://github.com/tomphttp",
 	"bugs": {
@@ -22,39 +22,42 @@
 		"tomphttp"
 	],
 	"license": "GPL-3.0",
-	"type": "commonjs",
-	"engines": {
-		"node": ">=18.0.0"
-	},
-	"bin": "bin.js",
-	"main": "dist/createServer.js",
-	"types": "dist/createServer.d.ts",
+	"private": true,
 	"files": [
 		"dist",
 		"bin.js"
 	],
 	"scripts": {
-		"build": "tsc",
-		"build:watch": "tsc --watch"
+		"start": "npx miniflare dist/sw.js",
+		"build": "rollup -c",
+		"build:watch": "rollup -cw"
 	},
 	"dependencies": {
 		"async-exit-hook": "^2.0.1",
 		"commander": "^9.4.1",
 		"dotenv": "^16.0.3",
-		"headers-polyfill": "^3.1.2",
 		"http-errors": "^2.0.0",
 		"source-map-support": "^0.5.21"
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20221111.1",
 		"@ianvs/prettier-plugin-sort-imports": "^3.7.1",
+		"@rollup/plugin-babel": "^5.3.1",
+		"@rollup/plugin-commonjs": "^22.0.2",
+		"@rollup/plugin-json": "^4.1.0",
+		"@rollup/plugin-node-resolve": "^14.1.0",
+		"@rollup/plugin-replace": "^4.0.0",
+		"@rollup/plugin-typescript": "^8.5.0",
 		"@types/async-exit-hook": "^2.0.0",
 		"@types/http-errors": "^2.0.1",
-		"@types/node": "^18.11.13",
 		"@types/source-map-support": "^0.5.6",
 		"@typescript-eslint/eslint-plugin": "^5.46.0",
 		"@typescript-eslint/parser": "^5.46.0",
 		"eslint": "^8.29.0",
 		"prettier": "^2.8.1",
+		"rollup": "^2.77.2",
+		"rollup-plugin-sourcemaps": "^0.6.3",
+		"rollup-plugin-typescript2": "^0.32.1",
 		"typescript": "^4.9.4"
 	}
 }
