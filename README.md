@@ -4,7 +4,13 @@ This repository implements the TompHTTP bare server. See the specification [here
 
 ## Workers
 
-Due to the limitations of web workers, we cannot handle WebSockets. This will severely limit the usage of this implementation.
+WebSocket proxying is now fully supported since the previous effort to port the Bare server. This implementation uses KVNamespaces in order to store stateful WebSocket data.
+
+Currently, the namespace name is `BARE`. Any non-JSON strings in the KV namespace will cause the script to break.
+
+## Who this is for
+
+This port requires some technical knowledge (Cloudflare KV, Workers). You will have to modify some code in order to get it working.
 
 ## Quickstart
 
