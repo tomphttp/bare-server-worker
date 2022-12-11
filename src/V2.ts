@@ -354,15 +354,6 @@ const newMeta: RouteCallback = async (request, options) => {
 };
 
 const tunnelSocket: RouteCallback = async (request, options) => {
-	const upgradeHeader = request.headers.get('upgrade');
-
-	if (upgradeHeader !== 'websocket')
-		throw new BareError(400, {
-			code: 'INVALID_BARE_HEADER',
-			id: `request.headers.upgrade`,
-			message: `Expected websocket.`,
-		});
-
 	const id = request.headers.get('sec-websocket-protocol');
 
 	if (!id)
@@ -445,5 +436,5 @@ export default function registerV2(server: Server) {
 	server.routes.set('/v2/', tunnelRequest);
 	server.routes.set('/v2/ws-new-meta', newMeta);
 	server.routes.set('/v2/ws-meta', getMeta);
-	server.routes.set('/v2/', tunnelSocket);
+	server.socketRoutes.set('/v2/', tunnelSocket);
 }

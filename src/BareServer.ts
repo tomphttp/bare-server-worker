@@ -86,6 +86,7 @@ export type RouteCallback = (
 
 export default class Server extends EventTarget {
 	routes = new Map<string, RouteCallback>();
+	socketRoutes = new Map<string, RouteCallback>();
 	private closed = false;
 	private directory: string;
 	private options: Options;
@@ -123,13 +124,18 @@ export default class Server extends EventTarget {
 		);
 		let response: Response;
 
+		const isSocket = request.headers.get('upgrade') === 'websocket';
+
 		try {
 			if (request.method === 'OPTIONS') {
 				response = new Response(undefined, { status: 200 });
 			} else if (service === '/') {
 				response = json(200, this.instanceInfo);
-			} else if (this.routes.has(service)) {
+			} else if (!isSocket && this.routes.has(service)) {
 				const call = this.routes.get(service)!;
+				response = await call(request, this.options);
+			} else if (isSocket && this.socketRoutes.has(service)) {
+				const call = this.socketRoutes.get(service)!;
 				response = await call(request, this.options);
 			} else {
 				throw new createHttpError.NotFound();
