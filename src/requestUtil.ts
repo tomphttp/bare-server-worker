@@ -1,6 +1,3 @@
-import type { Options } from './BareServer';
-import type CommonMeta from './Meta';
-
 export interface BareRemote {
 	host: string;
 	port: number | string;
