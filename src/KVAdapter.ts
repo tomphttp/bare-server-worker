@@ -1,7 +1,7 @@
 import type { Database } from './Meta';
 
 export default class KVAdapter implements Database {
-	ns: KVNamespace;
+	private ns: KVNamespace;
 	constructor(ns: KVNamespace) {
 		this.ns = ns;
 	}
