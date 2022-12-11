@@ -2,7 +2,8 @@ import type { RouteCallback } from './BareServer.js';
 import type Server from './BareServer.js';
 import { BareError, json } from './BareServer.js';
 import { decodeProtocol } from './encodeProtocol.js';
-import { BareHeaders, BareRemote, upgradeBareFetch } from './requestUtil.js';
+import type { BareHeaders, BareRemote } from './requestUtil.js';
+import { upgradeBareFetch } from './requestUtil.js';
 import { bareFetch, randomHex } from './requestUtil.js';
 
 const validProtocols: string[] = ['http:', 'https:', 'ws:', 'wss:'];
