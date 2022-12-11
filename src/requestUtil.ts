@@ -30,6 +30,7 @@ export async function bareFetch(
 		`${remote.protocol}//${remote.host}:${remote.port}${remote.path}`,
 		{
 			headers: requestHeaders as HeadersInit,
+			method: request.method,
 			body: noBody.includes(request.method) ? undefined : await request.blob(),
 			signal,
 			redirect: 'manual',
