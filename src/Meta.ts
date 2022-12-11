@@ -27,7 +27,9 @@ export interface Database {
 	delete(key: string): boolean | PromiseLike<boolean>;
 	entries():
 		| IterableIterator<[string, string]>
-		| PromiseLike<IterableIterator<[string, string]>>;
+		| AsyncIterableIterator<[string, string]>
+		| PromiseLike<IterableIterator<[string, string]>>
+		| PromiseLike<AsyncIterableIterator<[string, string]>>;
 }
 
 /**
@@ -52,7 +54,7 @@ export class JSONDatabaseAdapter {
 		return await this.impl.delete(key);
 	}
 	async *[Symbol.asyncIterator]() {
-		for (const [id, value] of await this.impl.entries()) {
+		for await (const [id, value] of await this.impl.entries()) {
 			yield [id, JSON.parse(value)] as [string, CommonMeta];
 		}
 	}

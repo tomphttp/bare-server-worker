@@ -18,12 +18,8 @@ export default class KVAdapter implements Database {
 		await this.ns.delete(key);
 		return true;
 	}
-	async entries() {
-		const entries: [string, string][] = [];
-
+	async *entries() {
 		for (const { name } of (await this.ns.list()).keys)
-			entries.push([name, await this.get(name)]);
-
-		return entries[Symbol.iterator]();
+			yield [name, await this.get(name)] as [string, string];
 	}
 }
