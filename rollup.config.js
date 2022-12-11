@@ -36,7 +36,7 @@ const config = [
 		],
 	},
 	// library
-	/*{
+	{
 		input: 'src/createServer.ts',
 		output: {
 			file: 'dist/index.js',
@@ -51,7 +51,7 @@ const config = [
 			babel({ babelHelpers: 'bundled', extensions: ['.ts'] }),
 			sourcemaps(),
 		],
-	},*/
+	},
 ];
 
 export default config;
