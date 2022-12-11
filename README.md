@@ -2,36 +2,31 @@
 
 This repository implements the TompHTTP bare server. See the specification [here](https://github.com/tomphttp/specifications/blob/master/BareServer.md).
 
-## Usage
+## Workers
 
-We provide a command-line interface for creating a server.
-
-For more features, specify the `--help` option when running the CLI.
+Due to the limitations of web workers, we cannot handle WebSockets. This will severely limit the usage of this implementation.
 
 ## Quickstart
 
-1. Install Bare Server Node globally
+1. Clone this repository
 
 ```sh
-$ npm install --global @tomphttp/bare-server-node
+$ git clone https://github.com/tomphttp/bare-server-worker.git
 ```
 
-2. Start the server
+2. Install
 
 ```sh
-$ npx bare-server-node
+$ npm install
 ```
 
-Optionally start the server localhost:8080:
+3. Build
 
-```sh
-$ npx bare-server-node --port 8080 --host localhost
+```
+$ npm run build
 ```
 
-## Programically create a bare server
+Output will contain:
 
-See [examples/](https://github.com/tomphttp/bare-server-node/tree/master/examples).
-
-## Development
-
-See the [wiki](https://github.com/tomphttp/bare-server-node/wiki).
+- dist/sw.js - All-in-one service worker. Automatically creates the Bare Server.
+- dist/index.js - ESM library. For use in environments where scripts can be imported.
