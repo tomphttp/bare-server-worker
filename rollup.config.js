@@ -17,7 +17,7 @@ const config = [
 		output: {
 			file: 'dist/sw.js',
 			exports: 'none',
-			sourcemap: true,
+			sourcemap: 'inline',
 		},
 		plugins: [
 			nodeResolve({ browser: true }),
