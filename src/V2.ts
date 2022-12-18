@@ -378,57 +378,26 @@ const tunnelSocket: RouteCallback = async (request, options) => {
 		request
 	);
 
-	const [client, server] = Object.values(new WebSocketPair());
+	const [remoteResponse, remoteSocket] = await upgradeBareFetch(
+		request,
+		request.signal,
+		meta.value.sendHeaders,
+		meta.value.remote
+	);
 
-	const remoteSocket = await upgradeBareFetch(meta.value.remote);
-
-	server.accept();
-
-	remoteSocket.addEventListener('close', () => {
-		server.close();
-	});
-
-	server.addEventListener('close', () => {
-		remoteSocket.close();
-	});
-
-	remoteSocket.addEventListener('error', (error) => {
-		if (options.logErrors) {
-			console.error('Remote socket error:', error);
-		}
-
-		server.close();
-	});
-
-	remoteSocket.addEventListener('error', (error) => {
-		if (options.logErrors) {
-			console.error('Serving socket error:', error);
-		}
-
-		remoteSocket.close();
-	});
-
+	// https://developers.cloudflare.com/workers/learning/using-websockets
+	// returning it on to a client....
 	meta.value.response = {
-		headers: {},
-		status: 101,
-		statusText: 'Continue',
+		headers: Object.fromEntries(remoteResponse.headers),
+		status: remoteResponse.status,
+		statusText: remoteResponse.statusText,
 	};
 
 	await options.database.set(id, meta);
 
-	// pipe
-
-	remoteSocket.addEventListener('message', (message) => {
-		server.send(message.data);
-	});
-
-	server.addEventListener('message', (message) => {
-		remoteSocket.send(message.data);
-	});
-
 	return new Response(undefined, {
 		status: 101,
-		webSocket: client,
+		webSocket: remoteSocket,
 	});
 };
 

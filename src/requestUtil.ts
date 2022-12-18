@@ -23,7 +23,7 @@ export async function bareFetch(
 	requestHeaders: BareHeaders,
 	remote: BareRemote
 ) {
-	return await globalThis.fetch(
+	return await fetch(
 		`${remote.protocol}//${remote.host}:${remote.port}${remote.path}`,
 		{
 			headers: requestHeaders as HeadersInit,
@@ -35,28 +35,22 @@ export async function bareFetch(
 	);
 }
 
-export function upgradeBareFetch(remote: BareRemote) {
-	return new Promise<WebSocket>((resolve, reject) => {
-		const cleanup = () => {
-			ws.removeEventListener('error', onError);
-			ws.removeEventListener('open', onOpen);
-		};
+export async function upgradeBareFetch(
+	request: Request,
+	signal: AbortSignal,
+	requestHeaders: BareHeaders,
+	remote: BareRemote
+) {
+	const res = await fetch(
+		`${remote.protocol}//${remote.host}:${remote.port}${remote.path}`,
+		{
+			headers: requestHeaders as HeadersInit,
+			method: request.method,
+			signal,
+		}
+	);
 
-		const onError = () => {
-			cleanup();
-			reject();
-		};
+	if (!res.webSocket) throw new Error("server didn't accept WebSocket");
 
-		const onOpen = () => {
-			cleanup();
-			resolve(ws);
-		};
-
-		const ws = new WebSocket(
-			`${remote.protocol}//${remote.host}:${remote.port}${remote.path}`
-		);
-
-		ws.addEventListener('error', onError);
-		ws.addEventListener('open', onOpen);
-	});
+	return [res, res.webSocket] as [Response, WebSocket];
 }

@@ -217,8 +217,6 @@ const tunnelSocket: RouteCallback = async (request, options) => {
 
 	loadForwardedHeaders(forwardHeaders, headers, request);
 
-	const [client, server] = Object.values(new WebSocketPair());
-
 	if (!id)
 		throw new BareError(400, {
 			code: 'INVALID_BARE_HEADER',
@@ -226,56 +224,25 @@ const tunnelSocket: RouteCallback = async (request, options) => {
 			message: `Expected ID.`,
 		});
 
-	const remoteSocket = await upgradeBareFetch(remote);
-
-	server.accept();
-
-	remoteSocket.addEventListener('close', () => {
-		server.close();
-	});
-
-	server.addEventListener('close', () => {
-		remoteSocket.close();
-	});
-
-	remoteSocket.addEventListener('error', (error) => {
-		if (options.logErrors) {
-			console.error('Remote socket error:', error);
-		}
-
-		server.close();
-	});
-
-	remoteSocket.addEventListener('error', (error) => {
-		if (options.logErrors) {
-			console.error('Serving socket error:', error);
-		}
-
-		remoteSocket.close();
-	});
+	const [remoteResponse, remoteSocket] = await upgradeBareFetch(
+		request,
+		request.signal,
+		headers,
+		remote
+	);
 
 	const meta = await options.database.get(id);
 
 	if (meta?.value.v === 1) {
 		meta.value.response = {
-			headers: {},
+			headers: Object.fromEntries(remoteResponse.headers),
 		};
 		await options.database.set(id, meta);
 	}
 
-	// pipe
-
-	remoteSocket.addEventListener('message', (message) => {
-		server.send(message.data);
-	});
-
-	server.addEventListener('message', (message) => {
-		remoteSocket.send(message.data);
-	});
-
 	return new Response(undefined, {
 		status: 101,
-		webSocket: client,
+		webSocket: remoteSocket,
 	});
 };
 
