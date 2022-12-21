@@ -144,7 +144,7 @@ const tunnelRequest: RouteCallback = async (request) => {
 
 	responseHeaders.set(
 		'x-bare-headers',
-		JSON.stringify(response.headers.entries())
+		JSON.stringify(Object.fromEntries(response.headers))
 	);
 
 	responseHeaders.set('x-bare-status', response.status.toString());
