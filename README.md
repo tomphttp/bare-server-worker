@@ -36,3 +36,5 @@ Output will contain:
 
 - dist/sw.js - All-in-one service worker. Automatically creates the Bare Server.
 - dist/index.js - ESM library. For use in environments where scripts can be imported.
+
+4. Deploy to cloudflare, follow the directions in [the cloudflare deployment guide](Deploy-to-CF.md)
