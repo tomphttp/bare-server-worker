@@ -17,19 +17,19 @@ This port requires some technical knowledge (Cloudflare KV, Workers). You will h
 1. Clone this repository
 
 ```sh
-$ git clone https://github.com/tomphttp/bare-server-worker.git
+git clone https://github.com/tomphttp/bare-server-worker.git
 ```
 
 2. Install
 
 ```sh
-$ npm install
+npm install
 ```
 
 3. Build
 
-```
-$ npm run build
+```sh
+npm run build
 ```
 
 Output will contain:
